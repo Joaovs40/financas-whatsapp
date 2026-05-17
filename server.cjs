@@ -105,7 +105,7 @@ RETORNE APENAS O JSON, SEM NADA MAIS.`;
       })
     });
     const data = await response.json();
-    console.log("🤖 Resposta Gemini:", JSON.stringify(data?.candidates?.[0]?.content?.parts?.[0]?.text));
+    console.log("🤖 Gemini completo:", JSON.stringify(data).substring(0, 500));
     
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     // Remove qualquer markdown ou texto extra
