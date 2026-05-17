@@ -3,12 +3,13 @@ const prisma = new PrismaClient();
 const express = require("express");
 const app = express();
 app.use(express.json());
-
 const baileys = require("@whiskeysockets/baileys");
 const makeWASocket = baileys.default;
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;
 const pino = require("pino");
 const qr = require("qrcode");
+const fs = require("fs");
+const path = require("path");
 
 let lastQR = null;
 let isConnected = false;
@@ -16,37 +17,75 @@ let isConnected = false;
 // Página web com QR Code
 app.get("/", async (req, res) => {
   if (isConnected) {
-    return res.send(`
-      <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#111;color:#fff">
-        <h1>✅ WhatsApp Conectado!</h1>
-        <p>O bot está funcionando. Pode fechar esta página.</p>
-      </body></html>
-    `);
+    return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#111;color:#fff">
+      <h1>✅ WhatsApp Conectado!</h1><p>O bot está funcionando!</p></body></html>`);
   }
   if (!lastQR) {
-    return res.send(`
-      <html><head><meta http-equiv="refresh" content="3"></head>
+    return res.send(`<html><head><meta http-equiv="refresh" content="3"></head>
       <body style="font-family:sans-serif;text-align:center;padding:50px;background:#111;color:#fff">
-        <h1>⏳ Aguardando QR Code...</h1>
-        <p>A página vai atualizar automaticamente.</p>
-      </body></html>
-    `);
+      <h1>⏳ Aguardando QR Code...</h1><p>Atualizando em 3 segundos...</p></body></html>`);
   }
   const qrImage = await qr.toDataURL(lastQR);
-  res.send(`
-    <html><head><meta http-equiv="refresh" content="30"></head>
+  res.send(`<html><head><meta http-equiv="refresh" content="30"></head>
     <body style="font-family:sans-serif;text-align:center;padding:50px;background:#111;color:#fff">
-      <h1>📱 Escaneie o QR Code</h1>
-      <p>Abra o WhatsApp > Aparelhos conectados > Conectar aparelho</p>
-      <img src="${qrImage}" style="width:300px;height:300px;border:10px solid white;border-radius:10px"/>
-      <p style="color:#aaa;font-size:12px">A página atualiza automaticamente a cada 30 segundos</p>
-    </body></html>
-  `);
+    <h1>📱 Escaneie o QR Code</h1>
+    <p>WhatsApp > Aparelhos conectados > Conectar aparelho</p>
+    <img src="${qrImage}" style="width:300px;height:300px;border:10px solid white;border-radius:10px"/>
+    </body></html>`);
 });
 
-async function testDB() {
-  await prisma.$connect();
-  console.log("✅ Banco conectado!");
+// Salva sessão no banco de dados
+async function saveSession(data) {
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "Session" (id, data) VALUES ('main', ${JSON.stringify(data)})
+      ON CONFLICT (id) DO UPDATE SET data = ${JSON.stringify(data)}
+    `;
+  } catch (e) {
+    // tabela pode não existir ainda
+  }
+}
+
+// Carrega sessão do banco de dados
+async function loadSession() {
+  try {
+    const rows = await prisma.$queryRaw`SELECT data FROM "Session" WHERE id = 'main'`;
+    if (rows && rows[0]) return JSON.parse(rows[0].data);
+  } catch (e) {}
+  return null;
+}
+
+// Auth state usando banco de dados
+async function useDBAuthState() {
+  const AUTH_DIR = "/tmp/auth_info";
+  if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+
+  // Tenta restaurar sessão do banco
+  const savedSession = await loadSession();
+  if (savedSession) {
+    for (const [filename, content] of Object.entries(savedSession)) {
+      fs.writeFileSync(path.join(AUTH_DIR, filename), JSON.stringify(content));
+    }
+    console.log("📂 Sessão restaurada do banco de dados!");
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+  const saveCredsAndDB = async () => {
+    await saveCreds();
+    // Salva todos os arquivos de auth no banco
+    const files = {};
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const file of fs.readdirSync(AUTH_DIR)) {
+        try {
+          files[file] = JSON.parse(fs.readFileSync(path.join(AUTH_DIR, file), "utf8"));
+        } catch (e) {}
+      }
+    }
+    await saveSession(files);
+  };
+
+  return { state, saveCreds: saveCredsAndDB };
 }
 
 async function processMessage(user, text) {
@@ -102,7 +141,7 @@ Interprete a mensagem e retorne APENAS JSON válido:
 }
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+  const { state, saveCreds } = await useDBAuthState();
   const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({ version, auth: state, logger: pino({ level: "silent" }), printQRInTerminal: false });
 
@@ -110,7 +149,7 @@ async function startBot() {
     const { connection, lastDisconnect, qr: qrCode } = update;
     if (qrCode) {
       lastQR = qrCode;
-      console.log("📱 QR Code gerado! Acesse a URL do serviço para escanear.");
+      console.log("📱 QR Code gerado! Acesse a URL para escanear.");
     }
     if (connection === "close") {
       isConnected = false;
@@ -144,7 +183,17 @@ async function startBot() {
 }
 
 async function main() {
-  await testDB();
+  await prisma.$connect();
+  console.log("✅ Banco conectado!");
+
+  // Cria tabela de sessão se não existir
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "Session" (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL
+    )
+  `;
+
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`🌐 Servidor web na porta ${PORT}`));
   await startBot();
