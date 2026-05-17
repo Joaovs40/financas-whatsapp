@@ -1,5 +1,5 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
+import pkg from "@whiskeysockets/baileys";
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = pkg;
 import qrcode from "qrcode-terminal";
 import pino from "pino";
 import { processMessage } from "./ai.js";
@@ -9,7 +9,7 @@ export async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
   const { version } = await fetchLatestBaileysVersion();
 
-  const sock = makeWASocket.default({
+  const sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: "silent" }),
@@ -26,8 +26,8 @@ export async function startBot() {
     }
 
     if (connection === "close") {
-      const shouldReconnect =
-        new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      const code = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = code !== DisconnectReason.loggedOut;
       console.log("❌ Conexão encerrada. Reconectando:", shouldReconnect);
       if (shouldReconnect) startBot();
     } else if (connection === "open") {
@@ -47,7 +47,7 @@ export async function startBot() {
       msg.message?.extendedTextMessage?.text ||
       "";
 
-    if (!phone || !text || phone.includes("@g.us")) return; // ignora grupos
+    if (!phone || !text || phone.includes("@g.us")) return;
 
     console.log(`📩 Mensagem de ${phone}: ${text}`);
 
@@ -58,11 +58,8 @@ export async function startBot() {
         create: { phone },
       });
 
-      // Mostra "digitando..."
       await sock.sendPresenceUpdate("composing", msg.key.remoteJid);
-
       const reply = await processMessage(user, text);
-
       await sock.sendMessage(msg.key.remoteJid, { text: reply });
     } catch (err) {
       console.error("❌ Erro ao processar mensagem:", err);
