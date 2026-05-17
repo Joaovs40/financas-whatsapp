@@ -1,13 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-
 export const prisma = new PrismaClient();
-
 export async function testDB() {
   try {
     await prisma.$connect();
-    console.log("✅ Banco de dados conectado!");
+    console.log("✅ Banco conectado!");
   } catch (err) {
-    console.error("❌ Erro ao conectar no banco:", err);
+    console.error("❌ Erro banco:", err);
     process.exit(1);
   }
 }

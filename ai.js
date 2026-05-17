@@ -25,7 +25,7 @@ Retorne APENAS JSON válido neste formato:
   "resposta": "✅ Despesa de R$45,50 em Alimentação registrada!"
 }
 
-Para ver_resumo, ajuda e conversa, não precisa de valor/categoria:
+Para ver_resumo, ajuda e conversa:
 {
   "acao": "ver_resumo",
   "resposta": "Deixa eu buscar seu resumo..."
@@ -39,74 +39,30 @@ export async function processMessage(user, text) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: SYSTEM_PROMPT + "\n\nMensagem do usuário: " + text }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 500,
-        }
+        contents: [{ parts: [{ text: SYSTEM_PROMPT + "\n\nMensagem do usuário: " + text }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 500 }
       })
     });
-
     const data = await response.json();
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
     const clean = raw.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
 
     if (parsed.acao === "registrar_despesa" && parsed.valor) {
-      await saveTransaction({
-        userId: user.id,
-        type: "despesa",
-        amount: parsed.valor,
-        category: parsed.categoria || "outros",
-        description: parsed.descricao || text,
-      });
+      await saveTransaction({ userId: user.id, type: "despesa", amount: parsed.valor, category: parsed.categoria || "outros", description: parsed.descricao || text });
       return parsed.resposta;
     }
-
     if (parsed.acao === "registrar_receita" && parsed.valor) {
-      await saveTransaction({
-        userId: user.id,
-        type: "receita",
-        amount: parsed.valor,
-        category: parsed.categoria || "outros",
-        description: parsed.descricao || text,
-      });
+      await saveTransaction({ userId: user.id, type: "receita", amount: parsed.valor, category: parsed.categoria || "outros", description: parsed.descricao || text });
       return parsed.resposta;
     }
-
-    if (parsed.acao === "ver_resumo") {
-      const summary = await getMonthSummary(user.id);
-      return summary;
-    }
-
+    if (parsed.acao === "ver_resumo") return await getMonthSummary(user.id);
     if (parsed.acao === "ajuda") {
-      return `🐷 *FinançasBot — Como usar:*
-
-💸 *Registrar gasto:*
-_"gastei 50 reais no mercado"_
-_"paguei 120 de conta de luz"_
-
-💰 *Registrar entrada:*
-_"recebi 3000 de salário"_
-_"ganhei 500 de freela"_
-
-📊 *Ver resumo:*
-_"qual meu resumo do mês?"_
-_"quanto gastei esse mês?"_
-
-É só mandar a mensagem naturalmente! 😊`;
+      return `🐷 *FinançasBot — Como usar:*\n\n💸 *Registrar gasto:*\n_"gastei 50 reais no mercado"_\n\n💰 *Registrar entrada:*\n_"recebi 3000 de salário"_\n\n📊 *Ver resumo:*\n_"quanto gastei esse mês?"_`;
     }
-
-    return parsed.resposta || "Entendi! Como posso te ajudar com suas finanças? 😊";
+    return parsed.resposta || "Como posso te ajudar com suas finanças? 😊";
   } catch (err) {
-    console.error("❌ Erro ao processar com IA:", err);
-    return "Ops, não entendi direito. Tenta dizer algo como: _\"gastei 50 reais no mercado\"_ 😊";
+    console.error("❌ Erro IA:", err);
+    return 'Ops! Tenta: _"gastei 50 reais no mercado"_ 😊';
   }
 }
