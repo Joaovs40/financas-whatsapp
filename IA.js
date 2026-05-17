@@ -1,8 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { prisma } from "./db.js";
 import { getMonthSummary, saveTransaction } from "./finance.js";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 const SYSTEM_PROMPT = `Você é um assistente financeiro pessoal via WhatsApp, simpático e direto.
 Seu trabalho é interpretar mensagens do usuário e retornar uma ação em JSON.
@@ -36,21 +35,30 @@ Seja amigável, use emojis e mantenha respostas curtas.`;
 
 export async function processMessage(user, text) {
   try {
-    // Pede para o Claude interpretar a mensagem
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: text }],
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: SYSTEM_PROMPT + "\n\nMensagem do usuário: " + text }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 500,
+        }
+      })
     });
 
-    const raw = response.content[0].text;
+    const data = await response.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Remove possíveis blocos markdown e faz parse
     const clean = raw.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
 
-    // Executa a ação correspondente
     if (parsed.acao === "registrar_despesa" && parsed.valor) {
       await saveTransaction({
         userId: user.id,
@@ -91,7 +99,7 @@ _"ganhei 500 de freela"_
 
 📊 *Ver resumo:*
 _"qual meu resumo do mês?"_
-_"quanto gastei hoje?"_
+_"quanto gastei esse mês?"_
 
 É só mandar a mensagem naturalmente! 😊`;
     }
