@@ -2,11 +2,9 @@
   "name": "financas-whatsapp-bot",
   "version": "1.0.0",
   "description": "Organizador financeiro via WhatsApp com IA",
-  "type": "module",
-  "main": "server.js",
+  "main": "server.cjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "node server.cjs",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
   },
