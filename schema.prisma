@@ -19,10 +19,15 @@ model Transaction {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
-  type        String   // "receita" | "despesa"
+  type        String
   amount      Float
   category    String
   description String?
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
+}
+
+model Session {
+  id   String @id
+  data String
 }
